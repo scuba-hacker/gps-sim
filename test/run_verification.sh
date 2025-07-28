@@ -53,9 +53,20 @@ check_requirements() {
     print_success "Python 3 found"
     
     # Check if test scripts exist
-    if [ ! -f "test_nmea.py" ] || [ ! -f "test_web_interface.py" ]; then
-        print_error "Test scripts not found. Run from test/ directory"
-        exit 1
+    REQUIRED_SCRIPTS=("test_nmea.py" "test_web_interface.py" "test_dual_output.py" "test_usb_output.py")
+    for script in "${REQUIRED_SCRIPTS[@]}"; do
+        if [ ! -f "$script" ]; then
+            print_error "Test script $script not found. Run from test/ directory"
+            exit 1
+        fi
+    done
+    print_success "All test scripts found"
+    
+    # Check Python packages
+    if ! python3 -c "import serial, requests" &> /dev/null; then
+        print_warning "Missing Python packages. Install with: pip install pyserial requests"
+    else
+        print_success "Python packages available"
     fi
     
     return 0
@@ -69,14 +80,73 @@ run_nmea_validation() {
         ls /dev/tty* | grep -E "(USB|ACM)" | head -5 || echo "No obvious serial ports found"
     fi
     
-    read -p "Enter serial port (e.g., /dev/ttyUSB0 or COM3): " SERIAL_PORT
+    if [ -z "$SERIAL_PORT" ]; then
+        read -p "Enter primary serial port (e.g., /dev/ttyUSB0 or COM3): " SERIAL_PORT
+    fi
     
     if [ -n "$SERIAL_PORT" ]; then
         print_step "Testing NMEA output on $SERIAL_PORT..."
-        timeout 30 python3 test_nmea.py "$SERIAL_PORT" 9600 || true
+        
+        # Ask if user wants to test dual output
+        read -p "Test dual output? Enter second port (or press Enter to skip): " SERIAL_PORT2
+        
+        if [ -n "$SERIAL_PORT2" ]; then
+            print_step "Running dual output test: $SERIAL_PORT vs $SERIAL_PORT2..."
+            timeout 45 python3 test_nmea.py "$SERIAL_PORT" 9600 --dual-test "$SERIAL_PORT2" || true
+        else
+            timeout 30 python3 test_nmea.py "$SERIAL_PORT" 9600 || true
+        fi
+        
         print_success "NMEA validation completed"
     else
         print_warning "Skipping NMEA validation - no serial port specified"
+    fi
+}
+
+run_usb_output_test() {
+    print_step "Running USB Serial output test..."
+    
+    if [ -z "$DEVICE_IP" ]; then
+        read -p "Enter GPS simulator IP address: " DEVICE_IP
+    fi
+    
+    echo "Available USB serial ports:"
+    if command -v ls &> /dev/null; then
+        ls /dev/tty* | grep -E "(USB|ACM)" | head -5 || echo "No USB serial ports found"
+    fi
+    
+    read -p "Enter USB serial port (e.g., /dev/ttyUSB0): " USB_PORT
+    
+    if [ -n "$DEVICE_IP" ] && [ -n "$USB_PORT" ]; then
+        print_step "Testing USB Serial output at $DEVICE_IP via $USB_PORT..."
+        python3 test_usb_output.py "$DEVICE_IP" "$USB_PORT"
+        print_success "USB output test completed"
+    else
+        print_warning "Skipping USB output test - missing IP or USB port"
+    fi
+}
+
+run_dual_output_test() {
+    print_step "Running comprehensive dual output test..."
+    
+    if [ -z "$DEVICE_IP" ]; then
+        read -p "Enter GPS simulator IP address: " DEVICE_IP
+    fi
+    
+    echo "Available serial ports:"
+    if command -v ls &> /dev/null; then
+        ls /dev/tty* | grep -E "(USB|ACM)" | head -10 || echo "No serial ports found"
+    fi
+    
+    read -p "Enter USB serial port (e.g., /dev/ttyUSB0): " USB_PORT
+    read -p "Enter GPIO UART port (e.g., /dev/ttyUSB1): " GPIO_PORT
+    
+    if [ -n "$DEVICE_IP" ] && [ -n "$USB_PORT" ] && [ -n "$GPIO_PORT" ]; then
+        print_step "Testing dual output: USB($USB_PORT) + GPIO($GPIO_PORT)..."
+        python3 test_dual_output.py "$DEVICE_IP" "$USB_PORT" "$GPIO_PORT"
+        print_success "Dual output test completed"
+    else
+        print_warning "Skipping dual output test - missing required parameters"
     fi
 }
 
@@ -181,6 +251,8 @@ show_help() {
     echo "  -s, --serial PORT         Serial port for NMEA testing"
     echo "  --nmea-only               Run only NMEA validation"
     echo "  --web-only                Run only web interface test"
+    echo "  --usb-only                Run only USB Serial output test"
+    echo "  --dual-only               Run only dual output test"
     echo "  --sigrok-only             Run only sigrok verification"
     echo "  -h, --help                Show this help message"
     echo
@@ -223,6 +295,14 @@ while [[ $# -gt 0 ]]; do
             TEST_MODE="web"
             shift
             ;;
+        --usb-only)
+            TEST_MODE="usb"
+            shift
+            ;;
+        --dual-only)
+            TEST_MODE="dual"
+            shift
+            ;;
         --sigrok-only)
             TEST_MODE="sigrok"
             shift
@@ -252,6 +332,12 @@ main() {
         "web")
             run_web_interface_test
             ;;
+        "usb")
+            run_usb_output_test
+            ;;
+        "dual")
+            run_dual_output_test
+            ;;
         "sigrok")
             run_sigrok_verification
             ;;
@@ -261,6 +347,10 @@ main() {
             run_nmea_validation
             echo
             run_web_interface_test
+            echo
+            run_usb_output_test
+            echo
+            run_dual_output_test
             echo
             run_sigrok_verification
             echo

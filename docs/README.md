@@ -38,11 +38,11 @@ This project demonstrates:
 - Interrupt handling and task scheduling
 
 ### 2. **Communication Protocols**
-- **UART**: 9600 baud GPS module simulation
+- **Dual UART Output**: Hardware UART (GPIO 32/33) and USB Serial simultaneously
+- **NMEA 0183**: GPS data protocol implementation with dual output channels
 - **HTTP**: RESTful web interface
 - **WiFi**: Network management with fallback
 - **NTP**: Time synchronization
-- **NMEA 0183**: GPS data protocol implementation
 
 ### 3. **Embedded Systems Architecture**
 - State machine design
@@ -66,6 +66,7 @@ This project demonstrates:
 - Asynchronous HTTP server
 - File upload handling
 - REST API design
+- Real-time configuration management (output channel selection)
 - OTA (Over-The-Air) updates
 
 ## Project Structure
@@ -158,9 +159,10 @@ After studying this project, students should understand:
 - **Project Base**: Foundation for capstone projects involving GPS
 
 ### Professional
-- **GPS Receiver Testing**: Controlled test data for GPS applications
+- **GPS Receiver Testing**: Controlled test data for GPS applications via dual output channels
 - **Protocol Validation**: Reference implementation for NMEA parsing
 - **Development Tools**: Test harness for navigation software
+- **Hardware Integration**: Direct USB connection or GPIO hardware interface
 
 ### Research
 - **Algorithm Testing**: Controlled GPS data for testing navigation algorithms

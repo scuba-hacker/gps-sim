@@ -10,10 +10,11 @@
 ## Hardware Setup
 
 1. **Connect M5 Stick C Plus to computer** via USB-C cable
-2. **GPS Output Connections**:
-   - GPIO 32 → GPS RX (or test equipment)
-   - GND → Common ground
+2. **NMEA Output Options**:
+   - **USB Serial**: Direct output via USB cable connection (default enabled)
+   - **GPIO Hardware UART**: GPIO 32 → GPS RX (or test equipment), GND → Common ground (default enabled)
    - GPIO 33 is configured but not used (TX-only simulation)
+   - Both outputs can be used simultaneously or individually configured
 
 ## Software Setup
 
@@ -25,9 +26,25 @@ code .  # Opens in VS Code
 ```
 
 ### 2. WiFi Configuration
-WiFi credentials are already configured in `src/mercator_secrets.c`:
+The GPS Simulator supports two WiFi modes:
+
+#### **Access Point Mode (Recommended for field use)**
+- **SSID**: `GPS-SIM`
+- **Password**: `cool-sim`
+- **IP Address**: `192.168.4.1`
+- **Advantages**: Works anywhere, no network dependency, instant setup
+- **Limitations**: No internet access, no NTP time sync
+
+#### **Client Mode (For internet connectivity)**
+WiFi credentials are configured in `src/mercator_secrets.c`:
 - Multiple networks with automatic fallback
-- Modify as needed for your environment
+- Provides NTP time synchronization
+- Modify credentials as needed for your environment
+
+**Switching Modes:**
+- **Hardware**: Press Button B on M5StickC Plus
+- **Web Interface**: Use WiFi Configuration section
+- **Default**: Client mode, falls back to AP mode if no networks available
 
 ### 3. Build and Upload
 ```bash
@@ -49,8 +66,14 @@ pio device monitor
 - Displays IP address when connected
 
 ### 2. Access Web Interface
-- Open browser to displayed IP address
-- Example: `http://192.168.1.100`
+
+#### **Access Point Mode (Default):**
+- Connect device to WiFi network: `GPS-SIM` (password: `cool-sim`)
+- Open browser to: `http://192.168.4.1/`
+
+#### **Client Mode:**
+- Device connects to existing WiFi and displays IP address
+- Open browser to displayed IP (example: `http://192.168.1.100`)
 
 ### 3. Upload GPS Track
 - Click "Upload GPS Track CSV"
@@ -58,26 +81,43 @@ pio device monitor
 - File format: Must contain `coordinates` column with `[latitude, longitude]`
 - Maximum size: 1MB
 
-### 4. Start Simulation
+### 4. Configure Outputs (Optional)
+- **Output Configuration** section allows enabling/disabling outputs:
+  - **GPIO Output**: Hardware UART on pins 32/33 for connecting GPS receivers
+  - **USB Output**: Serial output via USB connection for computer analysis
+  - At least one output must be enabled
+- Default: Both outputs enabled for maximum compatibility
+
+### 5. Start Simulation
 - Click "Start GPS Simulation" or press Button A
-- NMEA sentences begin outputting on GPIO 32 at 9600 baud
+- NMEA sentences begin outputting on configured channels at 9600 baud
 - Status shown on device display
 
 ## Hardware Controls
 
 - **Button A**: Start/Stop GPS simulation
-- **Button B**: Reload CSV file from storage
+- **Button B**: Switch WiFi mode (AP ↔ Client)
 - **Reset Button**: Restart device
 
 ## Testing the Output
 
-### Using Serial Monitor
+### Option 1: USB Serial Output (Easiest)
+```bash
+# Direct USB connection (no additional hardware needed)
+# Set terminal to 9600 baud, 8N1
+screen /dev/ttyUSB0 9600
+# or on some systems:
+screen /dev/ttyACM0 9600
+# Windows: Use Putty or Device Manager to find COM port
+```
+
+### Option 2: GPIO Hardware UART
 ```bash
 # Connect USB-Serial adapter to GPIO 32
 # Set terminal to 9600 baud, 8N1
-screen /dev/ttyUSB0 9600
+screen /dev/ttyUSB1 9600  # Note: may be different port than USB programming
 # or
-minicom -D /dev/ttyUSB0 -b 9600
+minicom -D /dev/ttyUSB1 -b 9600
 ```
 
 ### Expected Output
@@ -106,9 +146,12 @@ python test_web_interface.py 192.168.1.100
 - Move closer to router
 
 ### No NMEA Output
-- Verify GPIO 32 connections
+- Check output configuration (web interface → Output Configuration)
+- Verify connections if using GPIO output (GPIO 32)
+- For USB output, check correct serial port
 - Check that CSV file is loaded (display shows "CSV: Loaded")
 - Ensure simulation is started (display shows "GPS: Active")
+- Device display shows current output configuration ("GPIO+USB", "GPIO only", or "USB only")
 - Test with provided test scripts
 
 ### CSV Upload Fails

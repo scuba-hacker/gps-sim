@@ -46,6 +46,26 @@ GPS_SIMULATOR_ESP32 {
 
 ## 🎯 CRITICAL DEBUGGING KNOWLEDGE BASE
 
+### WIFI ACCESS POINT INTEGRATION 📡
+```cpp
+// NEW FEATURE: Dual WiFi mode system
+enum WiFiMode { WIFI_CLIENT_MODE, WIFI_AP_MODE };
+
+// AP Configuration (memorize these values):
+SSID: "GPS-SIM"
+Password: "cool-sim" 
+IP: 192.168.4.1
+Gateway: 192.168.4.1
+Subnet: 255.255.255.0
+
+// 🎯 Key Implementation Points:
+// - Mode preference saved to SPIFFS (/wifi_mode.txt)
+// - NTP only available in CLIENT mode (no internet in AP)
+// - Fallback: CLIENT mode fails → AUTO switch to AP mode
+// - Button B: Toggle between modes
+// - Web interface: /wifi-mode endpoint for switching
+```
+
 ### THE GREAT LIBRARY BATTLE OF 2024 ⚔️
 ```cpp
 // ⚠️ DANGER ZONE - AsyncElegantOTA compatibility
@@ -95,28 +115,43 @@ for (char c : sentence_content) checksum ^= c;
 ### WHEN NMEA OUTPUT IS BROKEN 🚨
 ```bash
 # 1. VISUAL INSPECTION (M5StickC display)
-Look for: "GPS: Active", "CSV: Loaded", WiFi IP displayed
+Look for: "GPS: Active", "CSV: Loaded", WiFi mode (AP/Client), IP displayed
 
-# 2. SERIAL DEBUGGING (if available)
+# 2. WIFI CONNECTIVITY CHECK
+# AP Mode: Connect to "GPS-SIM" network (password: cool-sim)
+# Client Mode: Check configured networks in mercator_secrets.c
+curl http://192.168.4.1/status      # AP mode status
+curl http://[DEVICE_IP]/status       # Client mode status
+
+# 3. SERIAL DEBUGGING (if available)
 pio device monitor  # Should see debug output at 115200 baud
 
-# 3. LOGIC ANALYZER VERIFICATION (professional method)
+# 4. LOGIC ANALYZER VERIFICATION (professional method)
 python test/test_sigrok_verification.py 10
 # Compares to samples/sigrok-logic-output-neo6m.log
 
-# 4. SOFTWARE-ONLY VALIDATION
+# 5. SOFTWARE-ONLY VALIDATION
 python test/nmea_format_validator.py --live /dev/ttyUSB0
 ```
 
 ### WEB INTERFACE DEBUGGING 🌐
 ```bash
-# Quick health check
-curl http://192.168.1.100/        # Should return HTML control page
-curl http://192.168.1.100/start   # Should return "GPS simulation started"
-curl http://192.168.1.100/stop    # Should return "GPS simulation stopped"
+# AP Mode testing (default IP)
+curl http://192.168.4.1/status    # JSON system status
+curl http://192.168.4.1/start     # Start GPS simulation
+curl http://192.168.4.1/stop      # Stop GPS simulation
 
-# File upload test  
-python test/test_web_interface.py 192.168.1.100
+# Client Mode testing (variable IP)
+curl http://[DEVICE_IP]/status    # JSON system status
+curl http://[DEVICE_IP]/start     # Start GPS simulation
+curl http://[DEVICE_IP]/stop      # Stop GPS simulation
+
+# WiFi mode switching
+curl -X POST -d "mode=ap" http://[DEVICE_IP]/wifi-mode      # Switch to AP mode
+curl -X POST -d "mode=client" http://192.168.4.1/wifi-mode  # Switch to Client mode
+
+# File upload test (works in both modes)
+python test/test_web_interface.py [DEVICE_IP]
 ```
 
 ### MEMORY ISSUES INVESTIGATION 🧠

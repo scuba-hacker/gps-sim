@@ -79,6 +79,112 @@ def test_stop_simulation(base_url):
         print(f"✗ Error stopping simulation: {e}")
         return False
 
+def test_status_endpoint(base_url):
+    """Test the status endpoint and check for dual output fields"""
+    print("Testing status endpoint...")
+    try:
+        response = requests.get(f"{base_url}/status")
+        if response.status_code == 200:
+            try:
+                status_data = response.json()
+                print("✓ Status endpoint accessible")
+                
+                # Check for dual output fields
+                required_fields = ['gpio_output_enabled', 'usb_output_enabled']
+                for field in required_fields:
+                    if field in status_data:
+                        print(f"✓ Status contains {field}: {status_data[field]}")
+                    else:
+                        print(f"✗ Status missing {field}")
+                        return False
+                
+                # Display current output configuration
+                gpio_enabled = status_data.get('gpio_output_enabled', False)
+                usb_enabled = status_data.get('usb_output_enabled', False)
+                
+                if gpio_enabled and usb_enabled:
+                    output_status = "Both GPIO and USB outputs enabled"
+                elif gpio_enabled:
+                    output_status = "GPIO output only"
+                elif usb_enabled:
+                    output_status = "USB output only"
+                else:
+                    output_status = "No outputs enabled (ERROR)"
+                
+                print(f"  Current output configuration: {output_status}")
+                return True
+                
+            except ValueError as e:
+                print(f"✗ Invalid JSON response: {e}")
+                return False
+        else:
+            print(f"✗ Status endpoint returned status {response.status_code}")
+            return False
+    except requests.RequestException as e:
+        print(f"✗ Error accessing status endpoint: {e}")
+        return False
+
+def test_output_configuration(base_url):
+    """Test output configuration API"""
+    print("Testing output configuration...")
+    
+    # Test different configurations
+    test_configs = [
+        {"gpio": "true", "usb": "false", "name": "GPIO only"},
+        {"gpio": "false", "usb": "true", "name": "USB only"},
+        {"gpio": "true", "usb": "true", "name": "Both outputs"}
+    ]
+    
+    success_count = 0
+    
+    for config in test_configs:
+        print(f"  Testing {config['name']} configuration...")
+        try:
+            data = {"gpio": config["gpio"], "usb": config["usb"]}
+            response = requests.post(f"{base_url}/output-config", data=data)
+            
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                    if result.get("success"):
+                        print(f"  ✓ {config['name']} configuration set successfully")
+                        success_count += 1
+                    else:
+                        print(f"  ✗ {config['name']} configuration failed: {result.get('error', 'Unknown error')}")
+                except ValueError:
+                    print(f"  ✗ Invalid JSON response for {config['name']}")
+            else:
+                print(f"  ✗ {config['name']} configuration returned status {response.status_code}")
+                
+        except requests.RequestException as e:
+            print(f"  ✗ Error setting {config['name']} configuration: {e}")
+        
+        time.sleep(0.5)  # Brief delay between configurations
+    
+    # Test invalid configuration (both outputs disabled)
+    print("  Testing invalid configuration (both outputs disabled)...")
+    try:
+        data = {"gpio": "false", "usb": "false"}
+        response = requests.post(f"{base_url}/output-config", data=data)
+        
+        if response.status_code == 400:
+            try:
+                result = response.json()
+                if not result.get("success") and "at least one output" in result.get("error", "").lower():
+                    print("  ✓ Invalid configuration correctly rejected")
+                    success_count += 1
+                else:
+                    print("  ✗ Invalid configuration response format incorrect")
+            except ValueError:
+                print("  ✗ Invalid JSON response for invalid configuration")
+        else:
+            print(f"  ✗ Invalid configuration should return 400, got {response.status_code}")
+            
+    except requests.RequestException as e:
+        print(f"  ✗ Error testing invalid configuration: {e}")
+    
+    return success_count >= 3  # Expect at least 3 successful tests (3 valid configs + 1 invalid)
+
 def test_csv_upload(base_url, csv_file_path):
     """Test CSV file upload"""
     print(f"Testing CSV upload with file: {csv_file_path}")
@@ -142,35 +248,45 @@ def main():
     
     # Test sequence
     tests_passed = 0
-    total_tests = 5
+    total_tests = 8
     
     # Test 1: Main page
     if test_main_page(base_url):
         tests_passed += 1
     print()
     
-    # Test 2: Stop simulation (ensure clean state)
+    # Test 2: Status endpoint (including dual output fields)
+    if test_status_endpoint(base_url):
+        tests_passed += 1
+    print()
+    
+    # Test 3: Output configuration API
+    if test_output_configuration(base_url):
+        tests_passed += 1
+    print()
+    
+    # Test 4: Stop simulation (ensure clean state)
     if test_stop_simulation(base_url):
         tests_passed += 1
     print()
     
-    # Test 3: Start simulation (should fail - no CSV)
+    # Test 5: Start simulation (should fail - no CSV)
     print("Expected to fail - no CSV loaded yet:")
     test_start_simulation(base_url)
     print()
     
-    # Test 4: Upload CSV
+    # Test 6: Upload CSV
     if test_csv_upload(base_url, csv_file):
         tests_passed += 1
         time.sleep(2)  # Give device time to process
     print()
     
-    # Test 5: Start simulation (should succeed now)
+    # Test 7: Start simulation (should succeed now)
     if test_start_simulation(base_url):
         tests_passed += 1
     print()
     
-    # Test 6: Stop simulation
+    # Test 8: Stop simulation
     if test_stop_simulation(base_url):
         tests_passed += 1
     print()
