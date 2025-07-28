@@ -184,16 +184,16 @@ void displayStatus() {
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextColor(WHITE);
   M5.Lcd.setCursor(0, 0);
-  M5.Lcd.setTextSize(1);  // Small text to fit more information on tiny screen
+  M5.Lcd.setTextSize(2);  // Small text to fit more information on tiny screen
   
   // Application title with visual separator
   M5.Lcd.println("GPS Simulator");
-  M5.Lcd.println("=============");
-  M5.Lcd.println();
+//  M5.Lcd.println("=============");
+//  M5.Lcd.println();
   
   // Network status with mode indication - critical for web interface access
   const char* modeStr = (currentWiFiMode == WIFI_AP_MODE) ? "AP" : "Client";
-  const char* statusStr = WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected";
+  const char* statusStr = WiFi.status() == WL_CONNECTED ? "Connect" : "Discon";
   
   M5.Lcd.printf("WiFi %s: %s\n", modeStr, statusStr);
   
@@ -204,12 +204,12 @@ void displayStatus() {
     
     // Show SSID in client mode, or indicate AP mode
     if (currentWiFiMode == WIFI_AP_MODE) {
-      M5.Lcd.printf("SSID: %s\n", AP_SSID);
+      M5.Lcd.printf("ID: %s\n", AP_SSID);
     } else {
-      M5.Lcd.printf("SSID: %s\n", WiFi.SSID().c_str());
+      M5.Lcd.printf("ID: %s\n", WiFi.SSID().c_str());
     }
   }
-  M5.Lcd.println();
+//  M5.Lcd.println();
   
   // File system status - shows if GPS data is available
   M5.Lcd.printf("CSV: %s\n", csvLoaded ? "Loaded" : "Not loaded");
@@ -229,7 +229,7 @@ void displayStatus() {
     outputStr = "No output!";  // Should never happen due to validation
   }
   M5.Lcd.printf("Out: %s\n", outputStr.c_str());
-  M5.Lcd.println();
+//  M5.Lcd.println();
   
   // Dynamic status message for detailed information
   M5.Lcd.println(statusMsg);
@@ -752,6 +752,7 @@ void sendGNTXT() {
 }
 
 void parseCSVLine(String line, GPSData& gps) {
+  Serial.println("parseCSVLine(): entered");
   int fieldIndex = 0;
   int startPos = 0;
   int commaPos = 0;
@@ -801,12 +802,14 @@ void parseCSVLine(String line, GPSData& gps) {
 bool loadCSV() {
   if (!SPIFFS.exists("/gps_track.csv")) {
     statusMsg = "No CSV file found";
+    Serial.printf("loadCSV(): %s",statusMsg.c_str());
     return false;
   }
   
   csvFile = SPIFFS.open("/gps_track.csv", "r");
   if (!csvFile) {
     statusMsg = "Failed to open CSV";
+    Serial.printf("loadCSV(): %s",statusMsg.c_str());
     return false;
   }
   
@@ -815,19 +818,27 @@ bool loadCSV() {
   currentLine = 0;
   csvLoaded = true;
   statusMsg = "CSV loaded successfully";
+  Serial.printf("loadCSV(): %s",statusMsg.c_str());
   return true;
 }
 
 GPSData getNextGPSData() {
+  Serial.println("getNextGPSData(): entered");
   GPSData gps;
   if (!csvFile || !csvFile.available()) {
+    Serial.println("getNextGPSData(): csv file not available");
     return gps; // Invalid GPS data
   }
   
   String line = csvFile.readStringUntil('\n');
   if (line.length() > 0) {
+    Serial.printf("getNextGPSData(): parse next line %i\n",currentLine);
     parseCSVLine(line, gps);
     currentLine++;
+  }
+  else
+  {
+    Serial.println("getNextGPSData(): line length 0");
   }
   
   return gps;
@@ -835,10 +846,10 @@ GPSData getNextGPSData() {
 
 void simulateGPS() {
   if (!gpsSimActive || !csvLoaded) return;
-  
+  Serial.println("SimulateGPS(): entered");
   unsigned long now = millis();
   if (now - lastGpsOutput >= 1000) { // 1 second interval
-    
+    Serial.println("SimulateGPS(): send next simulated message");
     // Get current time and format as HHMMSS.00
     // Use NTP time if available and synchronized, otherwise use system time
     unsigned long epochTime;
@@ -846,6 +857,7 @@ void simulateGPS() {
       // In client mode with NTP available, get fresh NTP time periodically
       static unsigned long lastNtpRefresh = 0;
       if (millis() - lastNtpRefresh > 30000) {  // Refresh every 30 seconds
+        Serial.println("SimulateGPS(): refreshing Time by NTP (30 second cycle)");
         timeClient.update();
         lastNtpRefresh = millis();
       }
@@ -868,6 +880,7 @@ void simulateGPS() {
     currentGPS.utc_time = String(timeStr);
     
     if (currentGPS.valid) {
+      Serial.println("SimulateGPS(): current gps is valid - send");
       // Send NMEA sentences in proper order
       sendGNRMC(currentGPS);
       delay(50);
@@ -884,11 +897,18 @@ void simulateGPS() {
       // Load next GPS data point
       currentGPS = getNextGPSData();
       if (!currentGPS.valid) {
+        Serial.println("SimulateGPS(): end of file reached");
         // Restart from beginning if we reach end of file
         csvFile.close();
         loadCSV();
         currentGPS = getNextGPSData();
       }
+      else {
+        Serial.println("SimulateGPS(): got next gps data");
+      }
+    }
+    else {
+      Serial.println("SimulateGPS(): current gps is invalid - skip");
     }
     
     lastGpsOutput = now;
@@ -921,7 +941,27 @@ void simulateGPS() {
  * - Flash: Code in app partition, CSV data in SPIFFS partition
  * - PSRAM: Not used in this application (M5StickC Plus has none)
  */
+
+const uint8_t RED_LED_GPIO = 10;
+int redLEDStatus=LOW;
+
+void toggleRedLED()
+{
+  redLEDStatus=!redLEDStatus;
+  digitalWrite(RED_LED_GPIO, redLEDStatus); // switch off
+}
+
+void flashRedLED()
+{
+  toggleRedLED();
+  delay(200);
+  toggleRedLED();
+}
+
 void setup() {
+  pinMode(RED_LED_GPIO, OUTPUT); // Red LED - the interior LED to M5 Stick
+  toggleRedLED(); // initially off
+
   // Initialize M5StickC Plus hardware
   // Parameters: LCD, Serial, I2C, State (enable all except state button)
   M5.begin(true, true, true, false);
@@ -1248,6 +1288,7 @@ void loop() {
       }
       statusMsg = gpsSimActive ? "GPS started" : "GPS stopped";
       displayStatus();
+      Serial.printf("Button A: %s\n",statusMsg.c_str());
     }
   }
   
@@ -1272,7 +1313,7 @@ void loop() {
         statusMsg = "NTP sync failed";
       }
       displayStatus();
-      
+      Serial.printf("Button B: %s\n",statusMsg.c_str());
     } else {
       // Short press: Switch WiFi Mode
       WiFiMode newMode = (currentWiFiMode == WIFI_AP_MODE) ? WIFI_CLIENT_MODE : WIFI_AP_MODE;
@@ -1282,6 +1323,7 @@ void loop() {
         statusMsg = "WiFi mode switch failed";
       }
       displayStatus();
+      Serial.printf("Button B: %s\n",statusMsg.c_str());
     }
   }
   
